@@ -48,7 +48,7 @@ class Worm:
             segment = Segment(pos.copy(), (n_segments - idx) / n_segments * radius)
             self.segments.append(segment)
 
-        self.power = 0.6
+        self.power = 5.0
         self.vel = Vec(0, 0)
 
     def draw(self, window: pg.Surface) -> None:
@@ -82,7 +82,7 @@ class Worm:
         for idx, segment in enumerate(self.segments):
             segment.radius = (n - idx) / n * self.head.radius
 
-    def act(self, foods: list[Food]) -> None:
+    def update(self, foods: list[Food], dt: float) -> None:
         closest_food = None
         closest_dist = float("inf")
         for food in foods:
@@ -96,8 +96,8 @@ class Worm:
             return
 
         acceleration = Vec(
-            (closest_food.pos.x - self.head.pos.x) / closest_dist * self.power,
-            (closest_food.pos.y - self.head.pos.y) / closest_dist * self.power,
+            (closest_food.pos.x - self.head.pos.x) / closest_dist * self.power * dt,
+            (closest_food.pos.y - self.head.pos.y) / closest_dist * self.power * dt,
         )
         self.move(acceleration)
 
@@ -108,6 +108,11 @@ class Food:
     def __init__(self, pos: Vec, radius: int):
         self.pos = pos
         self.radius = radius
+
+    # Return false if entity should be removed from simulation
+    def update(self, dt: float) -> bool:
+        self.radius -= 0.4 * dt
+        return self.radius > 0.1
 
     def draw(self, window: pg.Surface) -> None:
         pg.draw.circle(window, "#bede87", self.pos.to_tuple(), self.radius)
@@ -149,7 +154,7 @@ class Simulation:
 
         # Automatic movement
 
-        self.worm.act(self.foods)
+        self.worm.update(self.foods, self.update_dt)
 
         # Simulation boundaries
 
@@ -166,23 +171,16 @@ class Simulation:
         # Food
 
         if random.random() < 0.02:
-            self.foods.append(
-                Food(
-                    Vec(random.randint(0, WIDTH), random.randint(0, HEIGHT)),
-                    radius=10,
-                )
-            )
+            pos = Vec(random.randint(0, WIDTH), random.randint(0, HEIGHT))
+            self.foods.append(Food(pos, radius=10))
 
         for food in self.foods:
-            if (
-                distance(self.worm.head.pos, food.pos)
-                < self.worm.head.radius + food.radius
-            ):
+            dist = distance(self.worm.head.pos, food.pos)
+            if dist < self.worm.head.radius + food.radius:
                 self.foods.remove(food)
                 self.worm.grow()
             else:
-                food.radius -= 0.02
-                if food.radius <= 0.1:
+                if not food.update(self.update_dt):
                     self.foods.remove(food)
 
     def draw(self, window: pg.Surface) -> None:
@@ -196,7 +194,7 @@ class Simulation:
 if __name__ == "__main__":
     WIDTH, HEIGHT = 1600, 900
     WINDOW_SIZE = (WIDTH, HEIGHT)
-    TARGET_FPS = 120
+    TARGET_FPS = 60
     UPDATE_DT = 1.0 / 60.0
 
     pg.init()
