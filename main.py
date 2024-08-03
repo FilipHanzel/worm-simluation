@@ -150,6 +150,9 @@ class Simulation:
         #     acc.x /= 1.41421356237
         #     acc.y /= 1.41421356237
 
+        # acc.x = acc.x * self.worm.power * dt
+        # acc.y = acc.y * self.worm.power * dt
+
         # self.worm.move(acc)
 
         # Automatic movement
