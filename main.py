@@ -2,8 +2,9 @@ from __future__ import annotations
 
 import random
 import sys
-from itertools import pairwise
+from itertools import pairwise, zip_longest
 from math import sqrt
+from typing import Iterator
 
 import pygame as pg
 
@@ -32,7 +33,7 @@ def distance(a: Vec, b: Vec) -> float:
 
 
 class Segment:
-    __slots__ = "pos", "vel", "radius"
+    __slots__ = "pos", "radius"
 
     def __init__(self, pos: Vec, radius: int):
         self.pos = pos
@@ -42,28 +43,26 @@ class Segment:
 class Worm:
     def __init__(self, pos: Vec, n_segments: int, radius: int):
         self.head = Segment(pos, radius)
-
         self.segments = [self.head]
-        for idx in range(n_segments):
-            segment = Segment(pos.copy(), (n_segments - idx) / n_segments * radius)
-            self.segments.append(segment)
 
         self.power = 4.0
         self.drag = 0.04
 
         self.vel = Vec(0, 0)
 
+        self.base_size = radius
+        self.energy = 0.0
+        self.eat(1.0)
+
         self.head_color = "#f7786d"
         self.body_color = "#ffbc85"
 
-
     def draw(self, window: pg.Surface) -> None:
         for segment in self.segments:
-            pg.draw.circle(window, self.body_color, segment.pos.to_tuple(), segment.radius)
-        pg.draw.circle(window, self.head_color, self.head.pos.to_tuple(), self.head.radius)
+            pg.draw.circle(window, self.body_color, segment.pos.to_tuple(), segment.radius)  # fmt: skip
+        pg.draw.circle(window, self.head_color, self.head.pos.to_tuple(), self.head.radius)  # fmt: skip
 
     def move(self, acceleration: Vec) -> None:
-
         self.vel.x += acceleration.x * self.power
         self.vel.y += acceleration.y * self.power
 
@@ -81,13 +80,36 @@ class Worm:
                 n.pos.x += (p.pos.x - n.pos.x) / dist * clip
                 n.pos.y += (p.pos.y - n.pos.y) / dist * clip
 
-    def grow(self) -> None:
-        last = self.segments[-1]
-        self.segments.append(Segment(last.pos.copy(), 0))
+    @property
+    def segment_sizes(self) -> Iterator[float]:
+        # Starting from a value slightly higher than 1
+        # allows for the head (first node) to change size too.
+        i = 1.01
+        while True:
+            s = i ** (0.15 - i / self.energy)
+            i += 1
 
-        n = len(self.segments)
-        for idx, segment in enumerate(self.segments):
-            segment.radius = (n - idx) / n * self.head.radius
+            yield s
+
+            # The threshold is arbitrary,
+            # lower values give longer tail.
+            if s < 0.5:
+                break
+
+    def eat(self, energy: float) -> None:
+        self.energy += energy
+
+        # For now I'm assuming that worm can only grow, so the number
+        # of segments returned by generator will never exceed the number
+        # of already instantiated segments.
+        for segment, size in zip_longest(self.segments, self.segment_sizes):
+            if segment is None:
+                last = self.segments[-1]
+                # It's fine to alter the list here, because when segment is None,
+                # it means that we already stopped iterating over it.
+                self.segments.append(Segment(last.pos.copy(), size * self.base_size))
+            else:
+                segment.radius = size * self.base_size
 
     def update(self, foods: list[Food], dt: float) -> None:
         closest_food = None
@@ -180,7 +202,7 @@ class Simulation:
 
         # Food
 
-        if random.random() < 0.02:
+        if random.random() < 0.04:
             pos = Vec(random.randint(0, WIDTH), random.randint(0, HEIGHT))
             self.foods.append(Food(pos, radius=10))
 
@@ -188,7 +210,7 @@ class Simulation:
             dist = distance(self.worm.head.pos, food.pos)
             if dist < self.worm.head.radius + food.radius:
                 self.foods.remove(food)
-                self.worm.grow()
+                self.worm.eat(energy=1.0)
             else:
                 if not food.update(self.update_dt):
                     self.foods.remove(food)
