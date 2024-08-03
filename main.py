@@ -48,20 +48,27 @@ class Worm:
             segment = Segment(pos.copy(), (n_segments - idx) / n_segments * radius)
             self.segments.append(segment)
 
-        self.power = 5.0
+        self.power = 4.0
+        self.drag = 0.04
+
         self.vel = Vec(0, 0)
+
+        self.head_color = "#f7786d"
+        self.body_color = "#ffbc85"
+
 
     def draw(self, window: pg.Surface) -> None:
         for segment in self.segments:
-            pg.draw.circle(window, "#ffbc85", segment.pos.to_tuple(), segment.radius)
-        pg.draw.circle(window, "#f7786d", self.head.pos.to_tuple(), self.head.radius)
+            pg.draw.circle(window, self.body_color, segment.pos.to_tuple(), segment.radius)
+        pg.draw.circle(window, self.head_color, self.head.pos.to_tuple(), self.head.radius)
 
     def move(self, acceleration: Vec) -> None:
-        self.vel.x *= 0.9
-        self.vel.y *= 0.9
 
         self.vel.x += acceleration.x * self.power
         self.vel.y += acceleration.y * self.power
+
+        self.vel.x *= 1.0 - self.drag
+        self.vel.y *= 1.0 - self.drag
 
         self.head.pos.x += self.vel.x
         self.head.pos.y += self.vel.y
