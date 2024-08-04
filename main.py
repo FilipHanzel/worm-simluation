@@ -16,6 +16,10 @@ class Vec:
         self.x = x
         self.y = y
 
+    @property
+    def magnitude(self):
+        return (self.x * self.x + self.y * self.y) ** 0.5
+
     def to_tuple(self) -> tuple[float | int, float | int]:
         return (self.x, self.y)
 
@@ -41,7 +45,7 @@ class Segment:
 
 
 class Worm:
-    def __init__(self, pos: Vec, n_segments: int, radius: int):
+    def __init__(self, pos: Vec, radius: int):
         self.head = Segment(pos, radius)
         self.segments = [self.head]
 
@@ -63,6 +67,12 @@ class Worm:
         pg.draw.circle(window, self.head_color, self.head.pos.to_tuple(), self.head.radius)  # fmt: skip
 
     def move(self, acceleration: Vec) -> None:
+        # Drained energy = acceleration * efficiency
+        energy_drain = acceleration.magnitude * 0.01
+        if energy_drain > self.energy:
+            return
+        self.burn(energy_drain)
+
         self.vel.x += acceleration.x * self.power
         self.vel.y += acceleration.y * self.power
 
@@ -82,26 +92,38 @@ class Worm:
 
     @property
     def segment_sizes(self) -> Iterator[float]:
-        # Starting from a value slightly higher than 1
-        # allows for the head (first node) to change size too.
-        i = 1.01
-        while True:
-            s = i ** (0.15 - i / self.energy)
-            i += 1
+        # Starting from a value slightly higher than 1.0
+        # allows for the head (first node) to change size too,
+        # for i == 1.0, head size will always be 1.0.
+        i = 1.05
 
-            yield s
+        # Calculate segment/body scale based on stored energy.
+        # Adding small number to avoid zero division error,
+        # multiplying by arbitrary factor to make body larger.
+        scale = (self.energy + 0.001) * 3.0
+
+        # Special case for head (first node) - don't go smaller than 1.0
+        s = i ** (0.15 - i / scale)
+        s = max(s, 1.0)
+        yield s
+
+        while True:
+            i += 1.0
+            s = i ** (0.15 - i / scale)
 
             # The threshold is arbitrary,
             # lower values give longer tail.
             if s < 0.5:
                 break
 
+            yield s
+
     def eat(self, energy: float) -> None:
         self.energy += energy
 
-        # For now I'm assuming that worm can only grow, so the number
-        # of segments returned by generator will never exceed the number
-        # of already instantiated segments.
+        # For now I'm assuming that worm can only grow after eating,
+        # so the number of segments returned by generator will never
+        # exceed the number of already instantiated segments.
         for segment, size in zip_longest(self.segments, self.segment_sizes):
             if segment is None:
                 last = self.segments[-1]
@@ -110,6 +132,15 @@ class Worm:
                 self.segments.append(Segment(last.pos.copy(), size * self.base_size))
             else:
                 segment.radius = size * self.base_size
+
+    def burn(self, energy: float) -> None:
+        self.energy -= energy
+
+        segments = []
+        for segment, size in zip(self.segments, self.segment_sizes):
+            segment.radius = size * self.base_size
+            segments.append(segment)
+        self.segments = segments
 
     def update(self, foods: list[Food], dt: float) -> None:
         closest_food = None
@@ -155,7 +186,6 @@ class Simulation:
 
         self.worm = Worm(
             pos=Vec(window_width // 2, window_height // 2),
-            n_segments=0,
             radius=10,
         )
         self.foods: list[Food] = []
@@ -202,7 +232,7 @@ class Simulation:
 
         # Food
 
-        if random.random() < 0.04:
+        if random.random() < 0.02:
             pos = Vec(random.randint(0, WIDTH), random.randint(0, HEIGHT))
             self.foods.append(Food(pos, radius=10))
 
@@ -210,7 +240,7 @@ class Simulation:
             dist = distance(self.worm.head.pos, food.pos)
             if dist < self.worm.head.radius + food.radius:
                 self.foods.remove(food)
-                self.worm.eat(energy=1.0)
+                self.worm.eat(energy=0.1)
             else:
                 if not food.update(self.update_dt):
                     self.foods.remove(food)
@@ -218,9 +248,10 @@ class Simulation:
     def draw(self, window: pg.Surface) -> None:
         window.fill("#9e7564")
 
-        self.worm.draw(window)
         for food in self.foods:
             food.draw(window)
+
+        self.worm.draw(window)
 
 
 if __name__ == "__main__":
