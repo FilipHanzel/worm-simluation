@@ -46,31 +46,46 @@ class Segment:
 
 class Worm:
     def __init__(self, pos: Vec, radius: int):
+
+        # Body
+
         self.head = Segment(pos, radius)
         self.segments = [self.head]
 
-        self.power = 4.0
-        self.drag = 0.04
-
-        self.vel = Vec(0, 0)
+        # Adjustable parameters
 
         self.base_size = radius
-        self.energy = 0.0
-        self.eat(1.0)
 
+        self.power = 4.0
+        self.drag = 0.04
+        
+        self.energy_efficiency = 0.99
+
+        self.body_thickness = 0.15
+        self.body_size_multiplier = 3.0
+        self.body_size_function_offset = 0.1
         self.head_color = "#f7786d"
         self.body_color = "#ffbc85"
+
+        # State
+
+        self.vel = Vec(0, 0)
+        self.energy = 0.0
+
+        # Initialization
+
+        self.eat(1.0)
 
     def draw(self, window: pg.Surface) -> None:
         for segment in self.segments:
             pg.draw.circle(window, self.body_color, segment.pos.to_tuple(), segment.radius)  # fmt: skip
         pg.draw.circle(window, self.head_color, self.head.pos.to_tuple(), self.head.radius)  # fmt: skip
 
-    def move(self, acceleration: Vec) -> None:
-        # Drained energy = acceleration * efficiency
-        energy_drain = acceleration.magnitude * 0.01
+    # Return True if move was successful, otherwise False
+    def move(self, acceleration: Vec) -> bool:
+        energy_drain = acceleration.magnitude * (1.0 - self.energy_efficiency)
         if energy_drain > self.energy:
-            return
+            return False
         self.burn(energy_drain)
 
         self.vel.x += acceleration.x * self.power
@@ -90,26 +105,28 @@ class Worm:
                 n.pos.x += (p.pos.x - n.pos.x) / dist * clip
                 n.pos.y += (p.pos.y - n.pos.y) / dist * clip
 
+        return True
+
     @property
     def segment_sizes(self) -> Iterator[float]:
         # Starting from a value slightly higher than 1.0
         # allows for the head (first node) to change size too,
         # for i == 1.0, head size will always be 1.0.
-        i = 1.05
+        i = 1.0 + self.body_size_function_offset
 
         # Calculate segment/body scale based on stored energy.
         # Adding small number to avoid zero division error,
         # multiplying by arbitrary factor to make body larger.
-        scale = (self.energy + 0.001) * 3.0
+        scale = (self.energy + 0.001) * self.body_size_multiplier
 
         # Special case for head (first node) - don't go smaller than 1.0
-        s = i ** (0.15 - i / scale)
+        s = i ** (self.body_thickness - i / scale)
         s = max(s, 1.0)
         yield s
 
         while True:
             i += 1.0
-            s = i ** (0.15 - i / scale)
+            s = i ** (self.body_thickness - i / scale)
 
             # The threshold is arbitrary,
             # lower values give longer tail.
@@ -121,9 +138,9 @@ class Worm:
     def eat(self, energy: float) -> None:
         self.energy += energy
 
-        # For now I'm assuming that worm can only grow after eating,
-        # so the number of segments returned by generator will never
-        # exceed the number of already instantiated segments.
+        # Worm can only grow after eating, so the number of segments
+        # returned by generator will never exceed the number
+        # of already instantiated segments.
         for segment, size in zip_longest(self.segments, self.segment_sizes):
             if segment is None:
                 last = self.segments[-1]
@@ -142,7 +159,8 @@ class Worm:
             segments.append(segment)
         self.segments = segments
 
-    def update(self, foods: list[Food], dt: float) -> None:
+    # Return False if entity should be removed from simulation
+    def update(self, foods: list[Food], dt: float) -> bool:
         closest_food = None
         closest_dist = float("inf")
         for food in foods:
@@ -159,7 +177,7 @@ class Worm:
             (closest_food.pos.x - self.head.pos.x) / closest_dist * self.power * dt,
             (closest_food.pos.y - self.head.pos.y) / closest_dist * self.power * dt,
         )
-        self.move(acceleration)
+        return self.move(acceleration)
 
 
 class Food:
@@ -169,7 +187,7 @@ class Food:
         self.pos = pos
         self.radius = radius
 
-    # Return false if entity should be removed from simulation
+    # Return False if entity should be removed from simulation
     def update(self, dt: float) -> bool:
         self.radius -= 0.4 * dt
         return self.radius > 0.1
@@ -189,6 +207,8 @@ class Simulation:
             radius=10,
         )
         self.foods: list[Food] = []
+
+        self.font = pg.font.SysFont("Arial", 18)
 
     def update(self, keys: pg.key.ScancodeWrapper) -> None:
 
@@ -212,11 +232,20 @@ class Simulation:
         # acc.x = acc.x * self.worm.power * dt
         # acc.y = acc.y * self.worm.power * dt
 
-        # self.worm.move(acc)
+        # moved = self.worm.move(acc)
 
         # Automatic movement
 
-        self.worm.update(self.foods, self.update_dt)
+        moved = self.worm.update(self.foods, self.update_dt)
+
+        # Death handling
+
+        # Reset worm if it died (didn't have energy to move)
+        if not moved:
+            self.worm = Worm(
+                pos=Vec(self.window_width // 2, self.window_height // 2),
+                radius=10,
+            )
 
         # Simulation boundaries
 
@@ -253,6 +282,13 @@ class Simulation:
 
         self.worm.draw(window)
 
+        # Draw stats
+
+        window.blit(
+            self.font.render(f"Energy: {self.worm.energy:.2f}", True, (255, 255, 255)),
+            (0, 0),
+        )
+
 
 if __name__ == "__main__":
     WIDTH, HEIGHT = 1600, 900
@@ -261,6 +297,7 @@ if __name__ == "__main__":
     UPDATE_DT = 1.0 / 60.0
 
     pg.init()
+    pg.font.init()
 
     window = pg.display.set_mode(WINDOW_SIZE)
     pg.display.set_caption("Simulation")
