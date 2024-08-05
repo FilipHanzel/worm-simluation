@@ -58,7 +58,6 @@ class Worm:
 
         self.power = 4.0
         self.drag = 0.04
-        
         self.energy_efficiency = 0.99
 
         self.body_thickness = 0.15
@@ -69,7 +68,7 @@ class Worm:
 
         # State
 
-        self.vel = Vec(0, 0)
+        self.vel = Vec(0.0, 0.0)
         self.energy = 0.0
 
         # Initialization
@@ -80,6 +79,48 @@ class Worm:
         for segment in self.segments:
             pg.draw.circle(window, self.body_color, segment.pos.to_tuple(), segment.radius)  # fmt: skip
         pg.draw.circle(window, self.head_color, self.head.pos.to_tuple(), self.head.radius)  # fmt: skip
+
+    # Return False if entity should be removed from simulation
+    def update(self, foods: list[Food], dt: float) -> bool:
+        closest_food = None
+        closest_dist = float("inf")
+        for food in foods:
+            dist = distance(self.head.pos, food.pos)
+            if dist < closest_dist:
+                closest_food = food
+                closest_dist = dist
+
+        if closest_food is None:
+            acc = Vec(0.0, 0.0)
+        else:
+            acc = Vec(
+                (closest_food.pos.x - self.head.pos.x) / closest_dist * self.power * dt,
+                (closest_food.pos.y - self.head.pos.y) / closest_dist * self.power * dt,
+            )
+
+        return self.move(acc)
+
+    # Return False if entity should be removed from simulation
+    def update_manual(self, keys: pg.key.ScancodeWrapper, dt: float) -> bool:
+        acc = Vec(0, 0)
+
+        if keys[pg.K_w]:
+            acc.y -= 1.0
+        if keys[pg.K_s]:
+            acc.y += 1.0
+        if keys[pg.K_a]:
+            acc.x -= 1.0
+        if keys[pg.K_d]:
+            acc.x += 1.0
+
+        if acc.x != 0.0 and acc.y != 0.0:
+            acc.x /= 1.41421356237
+            acc.y /= 1.41421356237
+
+        acc.x = acc.x * self.power * dt
+        acc.y = acc.y * self.power * dt
+
+        return self.move(acc)
 
     # Return True if move was successful, otherwise False
     def move(self, acceleration: Vec) -> bool:
@@ -159,26 +200,6 @@ class Worm:
             segments.append(segment)
         self.segments = segments
 
-    # Return False if entity should be removed from simulation
-    def update(self, foods: list[Food], dt: float) -> bool:
-        closest_food = None
-        closest_dist = float("inf")
-        for food in foods:
-            dist = distance(self.head.pos, food.pos)
-            if dist < closest_dist:
-                closest_food = food
-                closest_dist = dist
-
-        # Do not move if no food in sight
-        if closest_food is None:
-            return
-
-        acceleration = Vec(
-            (closest_food.pos.x - self.head.pos.x) / closest_dist * self.power * dt,
-            (closest_food.pos.y - self.head.pos.y) / closest_dist * self.power * dt,
-        )
-        return self.move(acceleration)
-
 
 class Food:
     __slots__ = "pos", "radius"
@@ -202,46 +223,33 @@ class Simulation:
         self.window_width = window_width
         self.window_height = window_height
 
+        self.manual_control = True
+
         self.worm = Worm(
             pos=Vec(window_width // 2, window_height // 2),
             radius=10,
         )
         self.foods: list[Food] = []
 
-        self.font = pg.font.SysFont("Arial", 18)
+        self.font_size = 18
+        self.font = pg.font.SysFont("Arial", self.font_size)
+
+    def handle_event(self, event: pg.event.Event) -> None:
+        if event.type == pg.KEYDOWN and event.unicode == " ":
+            self.manual_control = not self.manual_control
 
     def update(self, keys: pg.key.ScancodeWrapper) -> None:
 
-        # Manual controls
+        # Movement
 
-        # acc = Vec(0, 0)
-
-        # if keys[pg.K_w]:
-        #     acc.y -= 1
-        # if keys[pg.K_s]:
-        #     acc.y += 1
-        # if keys[pg.K_a]:
-        #     acc.x -= 1
-        # if keys[pg.K_d]:
-        #     acc.x += 1
-
-        # if acc.x != 0 and acc.y != 0:
-        #     acc.x /= 1.41421356237
-        #     acc.y /= 1.41421356237
-
-        # acc.x = acc.x * self.worm.power * dt
-        # acc.y = acc.y * self.worm.power * dt
-
-        # moved = self.worm.move(acc)
-
-        # Automatic movement
-
-        moved = self.worm.update(self.foods, self.update_dt)
+        if self.manual_control:
+            is_alive = self.worm.update_manual(keys, self.update_dt)
+        else:
+            is_alive = self.worm.update(self.foods, self.update_dt)
 
         # Death handling
 
-        # Reset worm if it died (didn't have energy to move)
-        if not moved:
+        if not is_alive:
             self.worm = Worm(
                 pos=Vec(self.window_width // 2, self.window_height // 2),
                 radius=10,
@@ -282,12 +290,8 @@ class Simulation:
 
         self.worm.draw(window)
 
-        # Draw stats
-
-        window.blit(
-            self.font.render(f"Energy: {self.worm.energy:.2f}", True, (255, 255, 255)),
-            (0, 0),
-        )
+        window.blit(self.font.render(f"Manual control: {self.manual_control}", True, (255, 255, 255)), (0, self.font_size * 0))  # fmt: skip
+        window.blit(self.font.render(f"Energy: {self.worm.energy:.2f}", True, (255, 255, 255)), (0, self.font_size * 1))  # fmt: skip
 
 
 if __name__ == "__main__":
@@ -313,6 +317,8 @@ if __name__ == "__main__":
         for event in pg.event.get():
             if event.type == pg.QUIT:
                 running = False
+            else:
+                sim.handle_event(event)
 
         dt += clock.tick(TARGET_FPS) / 1000.0
         while dt > UPDATE_DT:
