@@ -59,6 +59,7 @@ class Worm:
         self.power = 4.0
         self.drag = 0.04
         self.energy_efficiency = 0.99
+        self.vision_range = 400
 
         self.body_thickness = 0.15
         self.body_size_multiplier = 3.0
@@ -76,9 +77,13 @@ class Worm:
         self.eat(1.0)
 
     def draw(self, window: pg.Surface) -> None:
+        # fmt: off
         for segment in self.segments:
-            pg.draw.circle(window, self.body_color, segment.pos.to_tuple(), segment.radius)  # fmt: skip
-        pg.draw.circle(window, self.head_color, self.head.pos.to_tuple(), self.head.radius)  # fmt: skip
+            pg.draw.circle(window, self.body_color, segment.pos.to_tuple(), segment.radius)
+        pg.draw.circle(window, self.head_color, self.head.pos.to_tuple(), self.head.radius)
+
+        pg.draw.circle(window, "#ffeeee", self.head.pos.to_tuple(), self.vision_range, 1)
+        # fmt: on
 
     # Return False if entity should be removed from simulation
     def update(self, foods: list[Food], dt: float) -> bool:
@@ -86,6 +91,10 @@ class Worm:
         closest_dist = float("inf")
         for food in foods:
             dist = distance(self.head.pos, food.pos)
+
+            if dist > self.vision_range:
+                continue
+
             if dist < closest_dist:
                 closest_food = food
                 closest_dist = dist
