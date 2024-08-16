@@ -100,7 +100,10 @@ class Worm:
                 closest_dist = dist
 
         if closest_food is None:
-            acc = Vec(0.0, 0.0)
+            acc = Vec(
+                (random.random() * 2 - 1) * self.power * dt,
+                (random.random() * 2 - 1) * self.power * dt,
+            )
         else:
             acc = Vec(
                 (closest_food.pos.x - self.head.pos.x) / closest_dist * self.power * dt,
