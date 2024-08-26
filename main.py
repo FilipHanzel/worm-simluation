@@ -59,7 +59,7 @@ class Worm:
         self.power = 4.0
         self.drag = 0.04
         self.energy_efficiency = 0.99
-        self.vision_range = 400
+        self.vision_range = 200
 
         self.body_thickness = 0.15
         self.body_size_multiplier = 3.0
@@ -69,6 +69,7 @@ class Worm:
 
         # State
 
+        self.acc = Vec(0.0, 0.0)
         self.vel = Vec(0.0, 0.0)
         self.energy = 0.0
 
@@ -100,17 +101,18 @@ class Worm:
                 closest_dist = dist
 
         if closest_food is None:
-            acc = Vec(
-                (random.random() * 2 - 1) * self.power * dt,
-                (random.random() * 2 - 1) * self.power * dt,
-            )
+            if random.random() < 0.05:
+                self.acc = Vec(
+                    (random.random() * 2 - 1) * self.power * dt,
+                    (random.random() * 2 - 1) * self.power * dt,
+                )
         else:
-            acc = Vec(
+            self.acc = Vec(
                 (closest_food.pos.x - self.head.pos.x) / closest_dist * self.power * dt,
                 (closest_food.pos.y - self.head.pos.y) / closest_dist * self.power * dt,
             )
 
-        return self.move(acc)
+        return self.move()
 
     # Return False if entity should be removed from simulation
     def update_manual(self, keys: pg.key.ScancodeWrapper, dt: float) -> bool:
@@ -132,17 +134,18 @@ class Worm:
         acc.x = acc.x * self.power * dt
         acc.y = acc.y * self.power * dt
 
-        return self.move(acc)
+        self.acc = acc
+        return self.move()
 
     # Return True if move was successful, otherwise False
-    def move(self, acceleration: Vec) -> bool:
-        energy_drain = acceleration.magnitude * (1.0 - self.energy_efficiency)
+    def move(self) -> bool:
+        energy_drain = self.acc.magnitude * (1.0 - self.energy_efficiency)
         if energy_drain > self.energy:
             return False
         self.burn(energy_drain)
 
-        self.vel.x += acceleration.x * self.power
-        self.vel.y += acceleration.y * self.power
+        self.vel.x += self.acc.x * self.power
+        self.vel.y += self.acc.y * self.power
 
         self.vel.x *= 1.0 - self.drag
         self.vel.y *= 1.0 - self.drag
