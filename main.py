@@ -56,7 +56,7 @@ class Worm:
 
         self.base_size = radius
 
-        self.power = 4.0
+        self.power = 10.0
         self.drag = 0.04
         self.energy_efficiency = 0.99
         self.vision_range = 200
@@ -112,7 +112,13 @@ class Worm:
                 (closest_food.pos.y - self.head.pos.y) / closest_dist * self.power * dt,
             )
 
-        return self.move()
+        energy_drain = self.acc.magnitude * (1.0 - self.energy_efficiency)
+        if energy_drain > self.energy:
+            return False
+
+        self.burn(energy_drain)
+        self.move()
+        return True
 
     # Return False if entity should be removed from simulation
     def update_manual(self, keys: pg.key.ScancodeWrapper, dt: float) -> bool:
@@ -135,17 +141,18 @@ class Worm:
         acc.y = acc.y * self.power * dt
 
         self.acc = acc
-        return self.move()
 
-    # Return True if move was successful, otherwise False
-    def move(self) -> bool:
         energy_drain = self.acc.magnitude * (1.0 - self.energy_efficiency)
         if energy_drain > self.energy:
             return False
-        self.burn(energy_drain)
 
-        self.vel.x += self.acc.x * self.power
-        self.vel.y += self.acc.y * self.power
+        self.burn(energy_drain)
+        self.move()
+        return True
+
+    def move(self) -> None:
+        self.vel.x += self.acc.x
+        self.vel.y += self.acc.y
 
         self.vel.x *= 1.0 - self.drag
         self.vel.y *= 1.0 - self.drag
@@ -160,8 +167,6 @@ class Worm:
             if clip > 0:
                 n.pos.x += (p.pos.x - n.pos.x) / dist * clip
                 n.pos.y += (p.pos.y - n.pos.y) / dist * clip
-
-        return True
 
     @property
     def segment_sizes(self) -> Iterator[float]:
@@ -208,6 +213,8 @@ class Worm:
 
     def burn(self, energy: float) -> None:
         self.energy -= energy
+        if self.energy < 0.0:
+            self.energy = 0.0
 
         segments = []
         for segment, size in zip(self.segments, self.segment_sizes):
@@ -219,17 +226,92 @@ class Worm:
 class Food:
     __slots__ = "pos", "radius"
 
-    def __init__(self, pos: Vec, radius: int):
+    def __init__(self, pos: Vec, radius: float):
         self.pos = pos
         self.radius = radius
 
     # Return False if entity should be removed from simulation
     def update(self, dt: float) -> bool:
         self.radius -= 0.4 * dt
-        return self.radius > 0.1
+        return self.radius > 0.7
 
     def draw(self, window: pg.Surface) -> None:
         pg.draw.circle(window, "#bede87", self.pos.to_tuple(), self.radius)
+
+
+class Virus:
+    __slots__ = (
+        "pos",
+        "vel",
+        "acc",
+        "radius",
+        "life_time",
+        "inactivity_time",
+        "active",
+        "power",
+        "drag",
+        "vision_range",
+    )
+
+    def __init__(self, pos: Vec, radius: float):
+        self.pos = pos
+        self.radius = radius
+
+        self.power = 1.0
+        self.drag = 0.02
+        self.vision_range = 100
+
+        self.acc = Vec(0, 0)
+        self.vel = Vec(0, 0)
+
+        self.life_time = 0.0
+        self.inactivity_time = 3.0
+        self.active = False
+
+    # Return False if entity should be removed from simulation
+    def update(self, worms: list[Worm], dt: float) -> bool:
+        self.life_time += dt
+
+        if not self.active:
+            if self.life_time > self.inactivity_time:
+                self.active = True
+            return True
+
+        closest_worm = None
+        closest_dist = float("inf")
+        for worm in worms:
+            dist = distance(self.pos, worm.head.pos)
+
+            if dist > self.vision_range:
+                continue
+
+            if dist < closest_dist:
+                closest_worm = worm
+                closest_dist = dist
+
+        if closest_worm is not None:
+            self.acc = Vec(
+                (closest_worm.head.pos.x - self.pos.x) / closest_dist * self.power * dt,
+                (closest_worm.head.pos.y - self.pos.y) / closest_dist * self.power * dt,
+            )
+            self.move()
+
+        self.radius -= 0.2 * dt
+        return self.radius > 0.7
+
+    def draw(self, window: pg.Surface) -> None:
+        color = "#e33636" if self.active else "#949494"
+        pg.draw.circle(window, color, self.pos.to_tuple(), self.radius)
+
+    def move(self) -> None:
+        self.vel.x += self.acc.x
+        self.vel.y += self.acc.y
+
+        self.vel.x *= 1.0 - self.drag
+        self.vel.y *= 1.0 - self.drag
+
+        self.pos.x += self.vel.x
+        self.pos.y += self.vel.y
 
 
 class Simulation:
@@ -245,6 +327,7 @@ class Simulation:
             radius=10,
         )
         self.foods: list[Food] = []
+        self.viruses: list[Virus] = []
 
         self.font_size = 18
         self.font = pg.font.SysFont("Arial", self.font_size)
@@ -282,11 +365,15 @@ class Simulation:
         elif self.worm.head.pos.y > HEIGHT:
             self.worm.head.pos.y = HEIGHT
 
-        # Food
+        # Other entities
 
         if random.random() < 0.02:
             pos = Vec(random.randint(0, WIDTH), random.randint(0, HEIGHT))
             self.foods.append(Food(pos, radius=10))
+
+        if random.random() < 0.03:
+            pos = Vec(random.randint(0, WIDTH), random.randint(0, HEIGHT))
+            self.viruses.append(Virus(pos, radius=7))
 
         for food in self.foods:
             dist = distance(self.worm.head.pos, food.pos)
@@ -297,11 +384,23 @@ class Simulation:
                 if not food.update(self.update_dt):
                     self.foods.remove(food)
 
+        for virus in self.viruses:
+            dist = distance(self.worm.head.pos, virus.pos)
+            if virus.active and dist < self.worm.head.radius + virus.radius:
+                self.viruses.remove(virus)
+                self.worm.burn(0.1)
+            else:
+                if not virus.update([self.worm], self.update_dt):
+                    self.viruses.remove(virus)
+
     def draw(self, window: pg.Surface) -> None:
         window.fill("#9e7564")
 
         for food in self.foods:
             food.draw(window)
+
+        for virus in self.viruses:
+            virus.draw(window)
 
         self.worm.draw(window)
 
