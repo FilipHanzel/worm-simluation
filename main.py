@@ -93,29 +93,46 @@ class Worm:
         # fmt: on
 
     # Return False if entity should be removed from simulation
-    def update(self, foods: list[Food], dt: float) -> bool:
+    def update(self, foods: list[Food], viruses: list[Virus], dt: float) -> bool:
         closest_food = None
-        closest_dist = float("inf")
+        closest_food_dist = float("inf")
         for food in foods:
             dist = distance(self.head.pos, food.pos)
 
             if dist > self.vision_range:
                 continue
 
-            if dist < closest_dist:
+            if dist < closest_food_dist:
                 closest_food = food
-                closest_dist = dist
+                closest_food_dist = dist
+
+        closest_virus = None
+        closest_virus_dist = float("inf")
+        for virus in viruses:
+            dist = distance(self.head.pos, virus.pos)
+
+            if dist > self.vision_range / 3:
+                continue
+
+            if dist < closest_virus_dist:
+                closest_virus = virus
+                closest_virus_dist = dist
 
         if closest_food is None:
-            if random.random() < 0.05:
+            if closest_virus:
+                self.acc = Vec.normalized(
+                    self.head.pos.x - closest_virus.pos.x,
+                    self.head.pos.y - closest_virus.pos.y,
+                )
+            elif random.random() < 0.05:
                 self.acc = Vec.normalized(
                     (random.random() * 2 - 1),
                     (random.random() * 2 - 1),
                 )
         else:
-            self.acc = Vec(
-                (closest_food.pos.x - self.head.pos.x) / closest_dist,
-                (closest_food.pos.y - self.head.pos.y) / closest_dist,
+            self.acc = Vec.normalized(
+                (closest_food.pos.x - self.head.pos.x),
+                (closest_food.pos.y - self.head.pos.y),
             )
 
         self.move(dt)
@@ -337,7 +354,7 @@ class Simulation:
         if self.manual_control:
             is_alive = self.worm.update_manual(keys, self.update_dt)
         else:
-            is_alive = self.worm.update(self.foods, self.update_dt)
+            is_alive = self.worm.update(self.foods, self.viruses, self.update_dt)
 
         # Death
 
