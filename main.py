@@ -346,6 +346,7 @@ class Simulation:
                 pos=Vec(self.window_width // 2, self.window_height // 2),
                 radius=10,
             )
+            return
 
         # Simulation boundaries
 
