@@ -16,9 +16,15 @@ class Vec:
         self.x = x
         self.y = y
 
-    @property
     def magnitude(self):
         return (self.x * self.x + self.y * self.y) ** 0.5
+
+    @staticmethod
+    def normalized(x: float | int, y: float | int) -> Vec:
+        magnitute = (x * x + y * y) ** 0.5
+        if magnitute == 0:
+            return Vec(0, 0)
+        return Vec(x / magnitute, y / magnitute)
 
     def to_tuple(self) -> tuple[float | int, float | int]:
         return (self.x, self.y)
@@ -102,57 +108,45 @@ class Worm:
 
         if closest_food is None:
             if random.random() < 0.05:
-                self.acc = Vec(
-                    (random.random() * 2 - 1) * self.power * dt,
-                    (random.random() * 2 - 1) * self.power * dt,
+                self.acc = Vec.normalized(
+                    (random.random() * 2 - 1),
+                    (random.random() * 2 - 1),
                 )
         else:
             self.acc = Vec(
-                (closest_food.pos.x - self.head.pos.x) / closest_dist * self.power * dt,
-                (closest_food.pos.y - self.head.pos.y) / closest_dist * self.power * dt,
+                (closest_food.pos.x - self.head.pos.x) / closest_dist,
+                (closest_food.pos.y - self.head.pos.y) / closest_dist,
             )
 
-        energy_drain = self.acc.magnitude * (1.0 - self.energy_efficiency)
-        if energy_drain > self.energy:
-            return False
-
-        self.burn(energy_drain)
-        self.move()
-        return True
+        self.move(dt)
+        return self.energy > 0
 
     # Return False if entity should be removed from simulation
     def update_manual(self, keys: pg.key.ScancodeWrapper, dt: float) -> bool:
-        acc = Vec(0, 0)
+        x, y = 0, 0
 
         if keys[pg.K_w]:
-            acc.y -= 1.0
+            y -= 1.0
         if keys[pg.K_s]:
-            acc.y += 1.0
+            y += 1.0
         if keys[pg.K_a]:
-            acc.x -= 1.0
+            x -= 1.0
         if keys[pg.K_d]:
-            acc.x += 1.0
+            x += 1.0
 
-        if acc.x != 0.0 and acc.y != 0.0:
-            acc.x /= 1.41421356237
-            acc.y /= 1.41421356237
+        self.acc = Vec.normalized(x, y)
+        self.move(dt)
+        return self.energy > 0
 
-        acc.x = acc.x * self.power * dt
-        acc.y = acc.y * self.power * dt
-
-        self.acc = acc
-
-        energy_drain = self.acc.magnitude * (1.0 - self.energy_efficiency)
+    def move(self, dt: float) -> None:
+        energy_drain = self.acc.magnitude() * (1.0 - self.energy_efficiency) * self.power * dt  # fmt: skip
         if energy_drain > self.energy:
-            return False
+            self.energy = 0.0
 
         self.burn(energy_drain)
-        self.move()
-        return True
 
-    def move(self) -> None:
-        self.vel.x += self.acc.x
-        self.vel.y += self.acc.y
+        self.vel.x += self.acc.x * self.power * dt
+        self.vel.y += self.acc.y * self.power * dt
 
         self.vel.x *= 1.0 - self.drag
         self.vel.y *= 1.0 - self.drag
