@@ -245,7 +245,7 @@ class Virus:
         "vel",
         "acc",
         "radius",
-        "life_time",
+        "lifetime",
         "inactivity_time",
         "active",
         "power",
@@ -264,16 +264,16 @@ class Virus:
         self.acc = Vec(0, 0)
         self.vel = Vec(0, 0)
 
-        self.life_time = 0.0
+        self.lifetime = 0.0
         self.inactivity_time = 3.0
         self.active = False
 
     # Return False if entity should be removed from simulation
     def update(self, worms: list[Worm], dt: float) -> bool:
-        self.life_time += dt
+        self.lifetime += dt
 
         if not self.active:
-            if self.life_time > self.inactivity_time:
+            if self.lifetime > self.inactivity_time:
                 self.active = True
             return True
 
@@ -345,7 +345,7 @@ class Simulation:
         else:
             is_alive = self.worm.update(self.foods, self.update_dt)
 
-        # Death handling
+        # Death
 
         if not is_alive:
             self.worm = Worm(
@@ -357,22 +357,28 @@ class Simulation:
 
         if self.worm.head.pos.x < 0:
             self.worm.head.pos.x = 0
-        elif self.worm.head.pos.x > WIDTH:
-            self.worm.head.pos.x = WIDTH
+        elif self.worm.head.pos.x > self.window_width:
+            self.worm.head.pos.x = self.window_width
 
         if self.worm.head.pos.y < 0:
             self.worm.head.pos.y = 0
-        elif self.worm.head.pos.y > HEIGHT:
-            self.worm.head.pos.y = HEIGHT
+        elif self.worm.head.pos.y > self.window_height:
+            self.worm.head.pos.y = self.window_height
 
         # Other entities
 
         if random.random() < 0.02:
-            pos = Vec(random.randint(0, WIDTH), random.randint(0, HEIGHT))
+            pos = Vec(
+                random.randint(0, self.window_width),
+                random.randint(0, self.window_height),
+            )
             self.foods.append(Food(pos, radius=10))
 
         if random.random() < 0.03:
-            pos = Vec(random.randint(0, WIDTH), random.randint(0, HEIGHT))
+            pos = Vec(
+                random.randint(0, self.window_width),
+                random.randint(0, self.window_height),
+            )
             self.viruses.append(Virus(pos, radius=7))
 
         for food in self.foods:
@@ -410,14 +416,13 @@ class Simulation:
 
 if __name__ == "__main__":
     WIDTH, HEIGHT = 1600, 900
-    WINDOW_SIZE = (WIDTH, HEIGHT)
     TARGET_FPS = 60
     UPDATE_DT = 1.0 / 60.0
 
     pg.init()
     pg.font.init()
 
-    window = pg.display.set_mode(WINDOW_SIZE)
+    window = pg.display.set_mode((WIDTH, HEIGHT))
     pg.display.set_caption("Simulation")
 
     sim = Simulation(WIDTH, HEIGHT, UPDATE_DT)
