@@ -285,10 +285,10 @@ class Virus:
 
         if closest_worm is not None:
             self.acc = Vec(
-                (closest_worm.head.pos.x - self.pos.x) / closest_dist * self.power * dt,
-                (closest_worm.head.pos.y - self.pos.y) / closest_dist * self.power * dt,
+                (closest_worm.head.pos.x - self.pos.x) / closest_dist,
+                (closest_worm.head.pos.y - self.pos.y) / closest_dist,
             )
-            self.move()
+            self.move(dt)
 
         self.radius -= 0.2 * dt
         return self.radius > 0.7
@@ -297,9 +297,9 @@ class Virus:
         color = "#e33636" if self.active else "#949494"
         pg.draw.circle(window, color, self.pos.to_tuple(), self.radius)
 
-    def move(self) -> None:
-        self.vel.x += self.acc.x
-        self.vel.y += self.acc.y
+    def move(self, dt: float) -> None:
+        self.vel.x += self.acc.x * self.power * dt
+        self.vel.y += self.acc.y * self.power * dt
 
         self.vel.x *= 1.0 - self.drag
         self.vel.y *= 1.0 - self.drag
